@@ -1,16 +1,18 @@
 pragma solidity ^0.5.2;
 
 import "./ERC721.sol";
+import "./interfaces/IERC721AuctionData.sol";
 
 /**
- * @title ERC721Mintable
+ * @title ERC721AuctionData
  * @dev ERC721 minting logic
  */
-contract ERC721Mintable is ERC721 {
+contract ERC721AuctionData is ERC721, IERC721AuctionData {
     using SafeMath for uint256;
     using Address for address;
 
-    address public minter;
+    address private minter;
+    address public minterSetter;
 
     struct auction {
         uint256 winningBid;
@@ -24,19 +26,28 @@ contract ERC721Mintable is ERC721 {
     }
 
     // Maps tokenID to auction object
-    mapping(uint256 => aution) public auctionData;
+    mapping(uint256 => auction) private auctionData;
 
     modifier onlyMinter {
         require(msg.sender == minter, "NOT_MINTER");
         _;
     }
 
+    modifier onlyMinterSetter {
+        require(msg.sender == minterSetter, "NOT_MINTER_SETTER");
+        _;
+    }
     modifier exists(uint256 tokenId) {
         require(_exists(tokenId), "NO_SUCH_TOKEN");
         _;
     }
 
-    constructor(address _minter) ERC721() public {
+    constructor(address _minter, address _minterSetter) ERC721() public {
+        minter = _minter;
+        minterSetter = _minterSetter;
+    }
+    
+    function setMinter(address _minter) public onlyMinterSetter {
         minter = _minter;
     }
 
@@ -57,7 +68,7 @@ contract ERC721Mintable is ERC721 {
 
     // minter contract should pass in the correct variables
     function bid(uint256 tokenId, uint256 amountETH, address bidder) public onlyMinter exists(tokenId) returns (bool) {
-        if (winningBid < amountETH) {
+        if (auctionData[tokenId].winningBid < amountETH) {
             auctionData[tokenId].winner = bidder;
             auctionData[tokenId].winningBid = amountETH;
         }
@@ -78,6 +89,31 @@ contract ERC721Mintable is ERC721 {
 
     // burn this NFT
     function repay(uint256 tokenId) public onlyMinter exists(tokenId) returns (bool) {
-        _; //FIXME
+        // _; //FIXME
+    }
+    
+    function getMinter() public view returns (address) {
+        return minter;
+    }
+    function getWinner(uint256 tokenId) public view returns (address) {
+        return auctionData[tokenId].winner;
+    }
+    function getBidAmounts(uint256 tokenId, address bidder) public view returns (uint256) {
+        return auctionData[tokenId].bidders[bidder];
+    }
+    function getBorrowAmount(uint256 tokenId) public view returns (uint256) {
+        return auctionData[tokenId].borrowAmount;
+    }
+    function getNFTContract(uint256 tokenId) public view returns (address) {
+        return auctionData[tokenId].NFTContract;
+    }
+    function getNFTTokenID(uint256 tokenId) public view returns (uint256) {
+        return auctionData[tokenId].NFTTokenID;
+    }
+    function getInterestRate(uint256 tokenId) public view returns (uint256) {
+        return auctionData[tokenId].interestRate;
+    }
+    function getTimestamp(uint256 tokenId) public view returns (uint256) {
+        return auctionData[tokenId].timeStamp;
     }
 }
