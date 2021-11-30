@@ -14,15 +14,19 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
     address private minter;
     address public minterSetter;
 
+    struct bidData {
+        uint256 amount;
+        uint256 interest;
+    }
+
     struct auction {
-        uint256 winningBid;
-        address winner;
-        mapping(address => uint256) bidders;
-        uint256 borrowAmount;
         address NFTContract;
         uint256 NFTTokenID;
-        uint256 interestRate; // per Second, unit 10^-10 FIXME
+        address winner;
+        mapping(address => bidData) bidders;
+        uint256 borrowAmount;
         uint256 timeStamp;
+        uint256 totalAmount;
     }
 
     // Maps tokenID to auction object
@@ -37,6 +41,7 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
         require(msg.sender == minterSetter, "NOT_MINTER_SETTER");
         _;
     }
+
     modifier exists(uint256 tokenId) {
         require(_exists(tokenId), "NO_SUCH_TOKEN");
         _;
@@ -67,29 +72,34 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
     }
 
     // minter contract should pass in the correct variables
-    function bid(uint256 tokenId, uint256 amountETH, address bidder) public onlyMinter exists(tokenId) returns (bool) {
-        if (auctionData[tokenId].winningBid < amountETH) {
-            auctionData[tokenId].winner = bidder;
-            auctionData[tokenId].winningBid = amountETH;
+    function bid(uint256 tokenId, uint256 amountETH, uint256 interestRate, address bidder) public onlyMinter exists(tokenId) returns (bool) {
+        require(auctionData[tokenId].winner != bidder, "CHANGES_NOT_ALLOW");
+        auctionData[tokenId].bidders[bidder].amount = auctionData[tokenId].bidders[bidder].amount.add(amountETH);
+        auctionData[tokenId].bidders[bidder].interest = interestRate;
+        return true;
+    }
+
+    function borrow(uint256 amount, uint256 tokenId, address lender, uint256 timestamp) public onlyMinter exists(tokenId) returns (bool) {
+        require((lender == auctionData[tokenId].winner && 11*(auctionData[tokenId].borrowAmount + amount)/10 <= auctionData[tokenId].bidders[lender].amount) || (auctionData[tokenId].winner == address(0) && 11*amount/10 <= auctionData[tokenId].bidders[lender].amount), "ILLEGAL_LOAN");
+        if (lender == auctionData[tokenId].winner) {
+            auctionData[tokenId].borrowAmount += amount;
+        } else {
+            auctionData[tokenId].winner = lender;
+            auctionData[tokenId].borrowAmount = amount;
         }
-        auctionData[tokenId].bidders[bidder] = auctionData[tokenId].bidders[bidder].add(amountETH);
         return true;
     }
 
-    function borrow(uint256 amount, uint256 tokenId, uint256 timestamp) public onlyMinter exists(tokenId) returns (bool) {
-        auctionData[tokenId].borrowAmount = amount;  
-        auctionData[tokenId].timeStamp = timestamp;
-        return true;
-    }
-
-    function withdraw(address to, uint256 newBalance, uint256 tokenId) public onlyMinter exists(tokenId) returns (bool) {
-        auctionData[tokenId].bidders[to] = newBalance;
+    function withdraw(address to, uint256 amountToWithdraw, uint256 tokenId) public onlyMinter exists(tokenId) returns (bool) {
+        auctionData[tokenId].bidders[to].amount = auctionData[tokenId].bidders[to].amount.sub(amountToWithdraw);
         return true;
     }
 
     // burn this NFT
     function repay(uint256 tokenId) public onlyMinter exists(tokenId) returns (bool) {
-        // _; //FIXME
+        auctionData[tokenId].winner = address(1);
+        auctionData[tokenId].borrowAmount = 0;
+        return true;
     }
     
     function getMinter() public view returns (address) {
@@ -99,7 +109,10 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
         return auctionData[tokenId].winner;
     }
     function getBidAmounts(uint256 tokenId, address bidder) public view returns (uint256) {
-        return auctionData[tokenId].bidders[bidder];
+        return auctionData[tokenId].bidders[bidder].amount;
+    }
+    function getBidInterest(uint256 tokenId, address bidder) public view returns (uint256) {
+        return auctionData[tokenId].bidders[bidder].interest;
     }
     function getBorrowAmount(uint256 tokenId) public view returns (uint256) {
         return auctionData[tokenId].borrowAmount;
@@ -109,9 +122,6 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
     }
     function getNFTTokenID(uint256 tokenId) public view returns (uint256) {
         return auctionData[tokenId].NFTTokenID;
-    }
-    function getInterestRate(uint256 tokenId) public view returns (uint256) {
-        return auctionData[tokenId].interestRate;
     }
     function getTimestamp(uint256 tokenId) public view returns (uint256) {
         return auctionData[tokenId].timeStamp;
