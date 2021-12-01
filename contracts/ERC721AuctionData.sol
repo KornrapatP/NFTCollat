@@ -16,7 +16,6 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
 
     struct bidData {
         uint256 amount;
-        uint256 interest;
     }
 
     struct auction {
@@ -27,6 +26,7 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
         uint256 borrowAmount;
         uint256 timeStamp;
         uint256 totalAmount;
+        uint256 interest;
     }
 
     // Maps tokenID to auction object
@@ -64,29 +64,31 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
      * @param tokenIdNFT The tokenID of collateral NFT
      * @return A boolean that indicates if the operation was successful.
      */
-    function mint(address to, uint256 tokenId, address addressNFT, uint256 tokenIdNFT) public onlyMinter returns (bool) {
+    function mint(address to, uint256 tokenId, address addressNFT, uint256 tokenIdNFT, uint256 interestRate) public onlyMinter returns (bool) {
         _mint(to, tokenId);
         auctionData[tokenId].NFTContract = addressNFT;
         auctionData[tokenId].NFTTokenID = tokenIdNFT;
+        auctionData[tokenId].interest = interestRate;
         return true;
     }
 
     // minter contract should pass in the correct variables
-    function bid(uint256 tokenId, uint256 amountETH, uint256 interestRate, address bidder) public onlyMinter exists(tokenId) returns (bool) {
-        require(auctionData[tokenId].winner != bidder, "CHANGES_NOT_ALLOW");
+    function bid(uint256 tokenId, uint256 amountETH, address bidder) public onlyMinter exists(tokenId) returns (bool) {
         auctionData[tokenId].bidders[bidder].amount = auctionData[tokenId].bidders[bidder].amount.add(amountETH);
-        auctionData[tokenId].bidders[bidder].interest = interestRate;
         return true;
     }
 
     function borrow(uint256 amount, uint256 tokenId, address lender, uint256 timestamp) public onlyMinter exists(tokenId) returns (bool) {
-        require((lender == auctionData[tokenId].winner && 11*(auctionData[tokenId].borrowAmount + amount)/10 <= auctionData[tokenId].bidders[lender].amount) || (auctionData[tokenId].winner == address(0) && 11*amount/10 <= auctionData[tokenId].bidders[lender].amount), "ILLEGAL_LOAN");
+        uint256 currentDebt = getTotalDebt(tokenId);
+        require((lender == auctionData[tokenId].winner && 11*(currentDebt)/10 <= auctionData[tokenId].bidders[lender].amount) || (auctionData[tokenId].winner == address(0) && 11*amount/10 <= auctionData[tokenId].bidders[lender].amount), "ILLEGAL_LOAN");
         if (lender == auctionData[tokenId].winner) {
-            auctionData[tokenId].borrowAmount += amount;
+            auctionData[tokenId].borrowAmount = amount + currentDebt;
+            
         } else {
             auctionData[tokenId].winner = lender;
             auctionData[tokenId].borrowAmount = amount;
         }
+        auctionData[tokenId].timeStamp = timestamp;
         return true;
     }
 
@@ -111,8 +113,8 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
     function getBidAmounts(uint256 tokenId, address bidder) public view returns (uint256) {
         return auctionData[tokenId].bidders[bidder].amount;
     }
-    function getBidInterest(uint256 tokenId, address bidder) public view returns (uint256) {
-        return auctionData[tokenId].bidders[bidder].interest;
+    function getBidInterest(uint256 tokenId) public view returns (uint256) {
+        return auctionData[tokenId].interest;
     }
     function getBorrowAmount(uint256 tokenId) public view returns (uint256) {
         return auctionData[tokenId].borrowAmount;
@@ -125,5 +127,11 @@ contract ERC721AuctionData is ERC721, IERC721AuctionData {
     }
     function getTimestamp(uint256 tokenId) public view returns (uint256) {
         return auctionData[tokenId].timeStamp;
+    }
+    function getTotalDebt(uint256 tokenId) public view returns (uint256) {
+        uint256 amountBorrow = getBorrowAmount(tokenId);
+        uint256 interest = getBidInterest(tokenId);
+        uint256 timestamp = block.timestamp - getTimestamp(tokenId);
+        return amountBorrow + (amountBorrow * (timestamp/86400) * interest/10000);
     }
 }
