@@ -18,15 +18,18 @@ contract IERC721AuctionData is IERC721 {
     function getBidInterest(uint256 tokenId) public view returns (uint256);
     function getTimestamp(uint256 tokenId) public view returns (uint256);
     function getTotalDebt(uint256 tokenId) public view returns (uint256);
+    function getDebtShareinETH(uint256 tokenId) public view returns (uint256);
 
-    function mint(address to, uint256 tokenId, address addressNFT, uint256 tokenIdNFT, uint256 interestRate) public returns (bool);
+    function mint(address to, uint256 tokenId, address addressNFT, uint256 tokenIdNFT, uint256 interestRate, uint256 loanAmount) public returns (bool);
 
     // minter contract should pass in the correct variables
     function bid(uint256 tokenId, uint256 amountETH, address bidder) public returns (bool);
 
     function borrow(uint256 amount, uint256 tokenId, address lender, uint256 timestamp) public returns (bool);
 
-    function withdraw(address to, uint256 amountToWithdraw, uint256 tokenId) public returns (bool);
+    function withdraw(address to, uint256 tokenId) public returns (uint256);
 
-    function repay(uint256 tokenId) public returns (bool);
+    function repay(uint256 tokenId, uint256 amountToRepay) public returns (bool);
+
+    function repayInstant(uint256 tokenId) public returns (bool);
 }
